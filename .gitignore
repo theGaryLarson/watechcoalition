@@ -146,3 +146,4 @@ agents/data/staging/
 !agents/data/staging/
 !agents/data/staging/raw_scrape_sample.json
 agents/.venv/
+agents/data/output/
