@@ -38,6 +38,10 @@ PYTHON_JOBS_RSS_URL = "https://www.python.org/jobs/feed/rss/"
 # Tokens that must appear at least once in raw_text for a posting to be valid (case-insensitive)
 VALID_POSTING_TOKENS = ("apply", "responsibilities", "requirements", "job", "role", "position")
 
+# Cap raw_html stored in JSON output (bytes); truncate with suffix if exceeded
+MAX_RAW_HTML_BYTES = 50 * 1024
+RAW_HTML_TRUNCATE_SUFFIX = "...<truncated>"
+
 # Non-job path prefixes to exclude (Python Job Board)
 EXCLUDED_PATH_PREFIXES = (
     "/",
@@ -139,6 +143,11 @@ async def scrape_job_detail(
         else:
             raw_text = str(md) if md else ""
         raw_html = getattr(result, "html", None) or ""
+        if raw_html:
+            enc = raw_html.encode("utf-8")
+            if len(enc) > MAX_RAW_HTML_BYTES:
+                suffix_bytes = RAW_HTML_TRUNCATE_SUFFIX.encode("utf-8")
+                raw_html = enc[: MAX_RAW_HTML_BYTES - len(suffix_bytes)].decode("utf-8", errors="replace") + RAW_HTML_TRUNCATE_SUFFIX
         return {
             "source": SOURCE_ID,
             "listing_url": listing_url,
