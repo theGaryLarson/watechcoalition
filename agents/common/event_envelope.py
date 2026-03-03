@@ -12,9 +12,9 @@ and the fixture files for examples.
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 from typing import Any
+import secrets
 
 from pydantic import BaseModel, Field
 
@@ -46,9 +46,34 @@ class EventEnvelope(BaseModel):
                      concrete examples.
     """
 
-    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_id: str = Field(
+        default_factory=lambda: _uuid4_str(),
+    )
     correlation_id: str
     agent_id: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     schema_version: str = "1.0"
     payload: dict[str, Any]
+
+
+def _uuid4_str() -> str:
+    """
+    Generate a UUID4-compatible string without importing the stdlib uuid module.
+
+    This helper avoids importing the standard library `uuid` module, which
+    internally imports `platform` and can be disrupted by third-party packages
+    that shadow or partially implement the `platform` module. The generated
+    identifiers conform to the UUID v4 bit layout and are suitable for use as
+    event identifiers within the pipeline.
+    """
+    random_bytes = bytearray(secrets.token_bytes(16))
+    random_bytes[6] = (random_bytes[6] & 0x0F) | 0x40  # version 4
+    random_bytes[8] = (random_bytes[8] & 0x3F) | 0x80  # variant 10xx
+    hexed = random_bytes.hex()
+    return (
+        f"{hexed[0:8]}-"
+        f"{hexed[8:12]}-"
+        f"{hexed[12:16]}-"
+        f"{hexed[16:20]}-"
+        f"{hexed[20:32]}"
+    )
