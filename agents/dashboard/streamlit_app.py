@@ -5,17 +5,24 @@ expandable card (full content, no truncation), and provides a sidebar filter by 
 Run from repo root: streamlit run agents/dashboard/streamlit_app.py
 """
 import json
-from datetime import datetime
+import os
+import sys
 from pathlib import Path
+
+# Ensure repo root is on path so "from agents.common ..." works when run via streamlit run
+_THIS_FILE = Path(__file__).resolve()
+_REPO_ROOT = _THIS_FILE.parents[2]  # agents/dashboard -> agents -> repo root
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import streamlit as st
 
-# Path resolution: same layout as scraper (agents/data/staging/)
-_THIS_FILE = Path(__file__).resolve()
-_AGENTS_ROOT = _THIS_FILE.parents[1]  # agents/
-_STAGING_DIR = _AGENTS_ROOT / "data" / "staging"
-_JSON_PATH = _STAGING_DIR / "raw_scrape_sample.json"
+from agents.common.datetime_utils import format_iso_timestamp_for_display
+from agents.common.paths import RAW_SCRAPE_SAMPLE_PATH as _JSON_PATH
 
-# Extra sidebar option with no postings, so you can test that the list depopulates
+# Debug only: include a source option with no postings to test list depopulation.
+# Set STREAMLIT_DEBUG_SIDEBAR=1 in env to enable.
+DEBUG_SIDEBAR = os.getenv("STREAMLIT_DEBUG_SIDEBAR", "").lower() in ("1", "true")
 TEST_SOURCE_NO_DATA = "jsearch"
 
 
@@ -46,17 +53,6 @@ def _source_for_filter(record: dict) -> str:
     return _safe_get(record, "source", "").strip() or "Unknown"
 
 
-def _format_timestamp_display(iso_timestamp: str) -> str:
-    """Format ISO timestamp for human-readable display (e.g. Feb 27, 2026 at 3:45 PM UTC)."""
-    if not iso_timestamp or iso_timestamp == "—":
-        return "—"
-    try:
-        dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
-        return dt.strftime("%b %d, %Y at %I:%M %p UTC").replace(" 0", " ")
-    except (ValueError, TypeError):
-        return iso_timestamp
-
-
 st.set_page_config(page_title="Scraped job postings", layout="wide")
 st.title("Scraped job postings")
 
@@ -67,9 +63,8 @@ if not postings:
     st.stop()
 
 # Sidebar: filter by source (same normalization for options and filter so "Unknown" works)
-# Include TEST_SOURCE_NO_DATA so you can select a source with no postings and verify the list depopulates
 sources = sorted({_source_for_filter(p) for p in postings})
-source_options = ["All"] + sources + [TEST_SOURCE_NO_DATA]
+source_options = ["All"] + sources + ([TEST_SOURCE_NO_DATA] if DEBUG_SIDEBAR else [])
 selected_source = st.sidebar.selectbox(
     "Filter by source",
     options=source_options,
@@ -91,7 +86,7 @@ else:
         source = _source_for_filter(record)
         url = _safe_get(record, "url", "—")
         timestamp_raw = _safe_get(record, "timestamp", "—")
-        timestamp_display = _format_timestamp_display(timestamp_raw)
+        timestamp_display = format_iso_timestamp_for_display(timestamp_raw)
         raw_text = _safe_get(record, "raw_text", "")
 
         # Expandable card label: URL host or "Posting N"

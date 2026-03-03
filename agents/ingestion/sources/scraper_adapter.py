@@ -9,27 +9,27 @@ Crawl4AI uses Playwright — run `playwright install` once if browsers are missi
 import asyncio
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import structlog
 
-# Paths: repo root for .env; agents root for data (so path is correct when run as -m agents....)
+# Paths: repo root for .env and for agents package; staging path from common (single source of truth)
 _THIS_FILE = Path(__file__).resolve()
-_AGENTS_ROOT = _THIS_FILE.parents[2]   # agents/
-_REPO_ROOT = _THIS_FILE.parents[3]     # repo root
+_REPO_ROOT = _THIS_FILE.parents[3]   # agents/ingestion/sources -> agents -> repo root
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 _ENV_PATH = _REPO_ROOT / ".env"
 if _ENV_PATH.exists():
     from dotenv import load_dotenv
     load_dotenv(_ENV_PATH)
 
+from agents.common.paths import RAW_SCRAPE_SAMPLE_PATH, STAGING_DIR
+
 log = structlog.get_logger()
 
 SOURCE_ID = "crawl4ai"
-STAGING_DIR = _AGENTS_ROOT / "data" / "staging"
-OUTPUT_FILE = STAGING_DIR / "raw_scrape_sample.json"
-OUTPUT_FILE_PRETTY = STAGING_DIR / "raw_scrape_sample2.json"
-OUTPUT_FILE_PRETTY_V3 = STAGING_DIR / "raw_scrape_sample3.json"
 MAX_URLS = 10
 
 
@@ -95,49 +95,6 @@ async def _scrape_urls(urls: list[str]) -> list[dict]:
     return records
 
 
-def _format_scraped_at(iso_timestamp: str) -> str:
-    """Return human-readable timestamp in UTC, matching dashboard (e.g. Feb 27, 2026 at 3:45 PM UTC)."""
-    try:
-        dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
-        return dt.strftime("%b %d, %Y at %I:%M %p UTC").replace(" 0", " ")
-    except (ValueError, TypeError):
-        return iso_timestamp
-
-
-def _normalize_whitespace(text: str) -> str:
-    """Collapse multiple blank lines to two newlines, strip each line. Improves readability without losing content."""
-    if not text:
-        return text
-    lines = [line.rstrip() for line in text.splitlines()]
-    return "\n".join(lines)
-
-
-def _prettify_record(record: dict) -> dict:
-    """Build a readable record: full raw_text, length, and normalized preview. No truncation."""
-    raw = record["raw_text"]
-    out = {
-        "source": record["source"],
-        "url": record["url"],
-        "timestamp": record["timestamp"],
-        "raw_text_full_length": len(raw),
-        "raw_text": _normalize_whitespace(raw),
-        "raw_text_truncated": False,
-    }
-    lines = [s for s in raw.splitlines() if s.strip()]
-    out["raw_text_preview_lines"] = lines
-    return out
-
-
-def _prettify_record_v3(record: dict) -> dict:
-    """Clean metadata + full body with normalized whitespace; output for raw_scrape_sample3.json. No truncation."""
-    return {
-        "source": record["source"],
-        "url": record["url"],
-        "scraped_at": _format_scraped_at(record["timestamp"]),
-        "raw_text": _normalize_whitespace(record["raw_text"]),
-    }
-
-
 def run() -> None:
     """Scrape configured targets and write raw_scrape_sample.json to agents/data/staging."""
     urls = _get_target_urls()
@@ -147,27 +104,15 @@ def run() -> None:
 
     records = asyncio.run(_scrape_urls(urls))
     STAGING_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = OUTPUT_FILE.resolve()
+    output_path = RAW_SCRAPE_SAMPLE_PATH.resolve()
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(records, f, indent=2, ensure_ascii=False)
-
-    pretty_records = [_prettify_record(r) for r in records]
-    output_pretty_path = OUTPUT_FILE_PRETTY.resolve()
-    with open(output_pretty_path, "w", encoding="utf-8") as f:
-        json.dump(pretty_records, f, indent=2, ensure_ascii=False)
-
-    pretty_v3_records = [_prettify_record_v3(r) for r in records]
-    output_pretty_v3_path = OUTPUT_FILE_PRETTY_V3.resolve()
-    with open(output_pretty_v3_path, "w", encoding="utf-8") as f:
-        json.dump(pretty_v3_records, f, indent=2, ensure_ascii=False)
 
     log.info(
         "raw_scrape_result",
         url=urls[0] if len(urls) == 1 else f"{len(urls)}_urls",
         record_count=len(records),
         output_file=str(output_path),
-        output_pretty_file=str(output_pretty_path),
-        output_pretty_v3_file=str(output_pretty_v3_path),
     )
 
 
