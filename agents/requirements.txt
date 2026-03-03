@@ -13,3 +13,5 @@ crawl4ai
 apscheduler
 pydantic
 structlog
+pytest
+ruff
