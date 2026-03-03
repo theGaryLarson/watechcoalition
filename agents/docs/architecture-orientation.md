@@ -62,7 +62,7 @@ Only the Orchestration Agent consumes `*Failed` and `*Alert`; no other agent doe
 
 ## Demand Analysis Agent
 
-**Classification:** Phase 2 only. **Consumes:** `RecordEnriched` **Emits:** `DemandSignalsUpdated`, `DemandAnomaly`
+**Classification:** Deterministic (Phase 2 only). **Consumes:** `RecordEnriched` **Emits:** `DemandSignalsUpdated`, `DemandAnomaly`
 
 Time-series index (skill, role, industry, region), velocity windows (7d, 30d, 90d), emerging/declining skills, supply/demand gap estimates, 30-day demand forecasts, and anomaly detection. Phase 1: scaffold directory only; do not implement. Phase 2: full implementation.
 
