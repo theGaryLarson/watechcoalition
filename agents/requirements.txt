@@ -8,6 +8,8 @@ langgraph>=0.2
 langchain>=0.3
 langchain-openai>=0.2
 langsmith>=0.1
+# Pin litellm to avoid Windows long-path error (guardrail_benchmarks in 1.82+)
+litellm>=1.53.1,<1.54
 crawl4ai>=0.4
 apscheduler>=3.10
 pytest>=8.0
