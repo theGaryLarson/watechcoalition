@@ -98,8 +98,10 @@ def run() -> None:
     records = asyncio.run(scrape_targets(targets))
 
     if not records:
-        log.warning("no_records_scraped")
-        print("WARNING: No records were scraped. Check SCRAPING_TARGETS and network access.")
+        log.warning(
+            "no_records_scraped",
+            message="Check SCRAPING_TARGETS and network access.",
+        )
         sys.exit(1)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -111,7 +113,6 @@ def run() -> None:
         total_records=len(records),
         output_path=str(OUTPUT_PATH),
     )
-    print(f"Scraped {len(records)} records → {OUTPUT_PATH}")
 
 
 if __name__ == "__main__":

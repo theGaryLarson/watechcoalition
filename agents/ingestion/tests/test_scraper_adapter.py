@@ -29,8 +29,13 @@ def test_get_targets_uses_env_when_set() -> None:
 
 
 def test_get_targets_strips_whitespace_and_skips_empty() -> None:
-    with patch.dict(os.environ, {"SCRAPING_TARGETS": "  a  ,  ,  b  "}, clear=False):
-        assert _get_targets() == ["a", "b"]
+    # Use valid URLs so _get_targets() does not fall back to DEFAULT_SCRAPING_TARGETS
+    with patch.dict(
+        os.environ,
+        {"SCRAPING_TARGETS": "  https://example.com/a  ,  ,  https://example.com/b  "},
+        clear=False,
+    ):
+        assert _get_targets() == ["https://example.com/a", "https://example.com/b"]
 
 
 def test_extract_postings_returns_records_with_expected_keys() -> None:
