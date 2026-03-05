@@ -1,13 +1,12 @@
 """
-Ingestion Agent — Week 3 Implementation.
+Ingestion Agent — Week 3 Implementation (LangGraph).
 
-Fetches job postings from JSearch API and/or Crawl4AI (with fixture fallback),
-deduplicates, stages in ``dbo.raw_ingested_jobs``, and emits an ``IngestBatch``
-event with the list of staged record IDs.
+Fetches job postings from configured source adapters, deduplicates, stages in
+``dbo.raw_ingested_jobs``, and emits an ``IngestBatch`` event.
 
 Agent ID (canonical): ingestion-agent
 Emits:    IngestBatch | SourceFailure
-Consumes: trigger event with {source, limit, query, location}
+Consumes: trigger event with ``region_config`` dict
 
 CLI usage (from repo root):
     python -m agents.ingestion.agent --source crawl4ai --limit 10 --migrate
@@ -22,244 +21,414 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
+from langgraph.graph import END, StateGraph
 
-from agents.common.base_agent import BaseAgent
+from agents.common.base_agent import AgentBase
 from agents.common.data_store.database import check_db_connection, session_scope
-from agents.common.data_store.models import JobIngestionRun, RawIngestedJob
+from agents.common.data_store.models import (
+    JobIngestionRun,
+    RawIngestedJob,
+)
 from agents.common.event_envelope import EventEnvelope
+from agents.common.types import RawJobRecord, RegionConfig
 from agents.ingestion.deduplicator import deduplicate_batch
-from agents.ingestion.sources.jsearch_adapter import JSearchAdapter
-from agents.ingestion.sources.scraper_adapter import ScraperAdapter
+from agents.ingestion.events import ingest_batch_payload, source_failure_payload
+from agents.ingestion.sources import get_adapter
+from agents.ingestion.state import IngestionState, SourceResult
 
 log = structlog.get_logger()
 
 _DEAD_LETTER_DIR = Path(__file__).parent.parent / "data" / "dead_letter"
-_FALLBACK_SCRAPE = Path(__file__).parent.parent / "data" / "fixtures" / "fallback_scrape_sample.json"
 
 
-class IngestionAgent(BaseAgent):
+# ---------------------------------------------------------------------------
+# LangGraph nodes
+# ---------------------------------------------------------------------------
+
+
+def initialize_run(state: IngestionState) -> IngestionState:
+    """Create the run tracking record in the DB."""
+    run_id = state.get("run_id", str(uuid.uuid4()))
+    region_cfg = state.get("region_config", {})
+    region_id = region_cfg.get("region_id", "")
+    source = region_cfg.get("sources", ["crawl4ai"])[0] if region_cfg.get("sources") else "crawl4ai"
+
+    with session_scope() as session:
+        run_record = JobIngestionRun(
+            run_id=run_id,
+            region_id=region_id,
+            source=source,
+            status="running",
+        )
+        session.add(run_record)
+
+    log.info("ingestion_run_initialized", run_id=run_id, region_id=region_id)
+    return {
+        "run_id": run_id,
+        "status": "running",
+        "fetched_records": [],
+        "source_results": [],
+        "staged_count": 0,
+        "dedup_count": 0,
+        "error_count": 0,
+        "errors": [],
+    }
+
+
+def fetch_sources(state: IngestionState) -> IngestionState:
+    """Fetch records from all configured source adapters."""
+    region_cfg = state.get("region_config", {})
+    sources = region_cfg.get("sources", ["crawl4ai"])
+
+    try:
+        region = RegionConfig(**region_cfg)
+    except Exception:
+        region = RegionConfig(
+            region_id=region_cfg.get("region_id", "default"),
+            display_name=region_cfg.get("display_name", "Default"),
+            query_location=region_cfg.get("query_location", region_cfg.get("location", "Washington state")),
+            radius_miles=region_cfg.get("radius_miles", 50),
+            states=region_cfg.get("states", ["WA"]),
+            countries=region_cfg.get("countries", ["US"]),
+            sources=sources,
+            role_categories=region_cfg.get("role_categories", []),
+            keywords=region_cfg.get("keywords", [region_cfg.get("query", "software engineer")]),
+        )
+
+    all_records: list[RawJobRecord] = []
+    source_results: list[SourceResult] = []
+    errors: list[str] = []
+
+    for source_name in sources:
+        try:
+            adapter = get_adapter(source_name)
+            records = asyncio.run(adapter.fetch(region))
+            all_records.extend(records)
+            source_results.append(SourceResult(
+                source_name=source_name,
+                records_fetched=len(records),
+            ))
+            log.info("source_fetch_ok", source=source_name, count=len(records))
+        except Exception as exc:
+            err_msg = f"{source_name}: {exc}"
+            errors.append(err_msg)
+            source_results.append(SourceResult(
+                source_name=source_name,
+                records_fetched=0,
+                error=str(exc),
+            ))
+            log.warning("source_fetch_failed", source=source_name, error=str(exc))
+
+    return {
+        "fetched_records": all_records,
+        "source_results": source_results,
+        "errors": state.get("errors", []) + errors,
+    }
+
+
+def check_fetch_results(state: IngestionState) -> str:
+    """Route: did we get any records?"""
+    fetched = state.get("fetched_records", [])
+    source_results = state.get("source_results", [])
+    all_failed = all(r.error is not None for r in source_results) if source_results else True
+
+    if not fetched and all_failed:
+        return "handle_total_failure"
+    return "deduplicate"
+
+
+def handle_total_failure(state: IngestionState) -> IngestionState:
+    """All sources failed — mark run as failed."""
+    run_id = state.get("run_id", "")
+    errors = state.get("errors", [])
+
+    _update_run(run_id, status="failed", error_message="; ".join(errors))
+
+    return {
+        "status": "failed",
+        "ingest_batch_event": source_failure_payload(
+            run_id=run_id,
+            source="all",
+            error="; ".join(errors),
+        ),
+    }
+
+
+def deduplicate(state: IngestionState) -> IngestionState:
+    """Run two-phase deduplication on fetched records."""
+    fetched = state.get("fetched_records", [])
+
+    # Convert RawJobRecord objects to dicts for the deduplicator
+    record_dicts = [r.model_dump() for r in fetched]
+
+    with session_scope() as session:
+        dedup_result = deduplicate_batch(record_dicts, session)
+
+    return {
+        "fetched_records": [RawJobRecord(**r) for r in dedup_result.new_records],
+        "dedup_count": dedup_result.duplicates_skipped,
+    }
+
+
+def stage_records(state: IngestionState) -> IngestionState:
+    """Write deduplicated records to the staging table."""
+    run_id = state.get("run_id", "")
+    records = state.get("fetched_records", [])
+    region_cfg = state.get("region_config", {})
+    region_id = region_cfg.get("region_id", "")
+
+    staged_count = 0
+    error_count = 0
+
+    with session_scope() as session:
+        for record in records:
+            try:
+                row = RawIngestedJob(
+                    ingestion_run_id=run_id,
+                    region_id=region_id,
+                    source=record.source,
+                    external_id=record.external_id,
+                    raw_payload_hash=record.raw_payload_hash,
+                    title=record.title,
+                    company=record.company,
+                    description=record.description or None,
+                    city=record.city,
+                    state=record.state,
+                    country=record.country,
+                    is_remote=record.is_remote,
+                    job_url=record.job_url,
+                    source_url=record.source_url or None,
+                    date_posted=str(record.date_posted) if record.date_posted else None,
+                    employment_type=record.employment_type,
+                    experience_level=record.experience_level,
+                    salary_raw=record.salary_raw,
+                    salary_min=record.salary_min,
+                    salary_max=record.salary_max,
+                    salary_currency=record.salary_currency,
+                    salary_period=record.salary_period,
+                    raw_payload=record.raw_payload,
+                    processing_status="pending",
+                )
+                session.add(row)
+                session.flush()
+                staged_count += 1
+            except Exception as exc:
+                error_count += 1
+                log.warning(
+                    "stage_record_failed",
+                    external_id=record.external_id,
+                    error=str(exc),
+                )
+                _quarantine_to_file(run_id, record.model_dump(), str(exc))
+
+    return {"staged_count": staged_count, "error_count": error_count}
+
+
+def emit_ingest_batch(state: IngestionState) -> IngestionState:
+    """Build the IngestBatch event payload."""
+    region_cfg = state.get("region_config", {})
+    source_names = region_cfg.get("sources", ["crawl4ai"])
+    source_label = ",".join(source_names) if len(source_names) > 1 else source_names[0]
+
+    original_fetched = sum(
+        r.records_fetched for r in state.get("source_results", [])
+    )
+
+    payload = ingest_batch_payload(
+        batch_id=state.get("run_id", ""),
+        source=source_label,
+        region_id=region_cfg.get("region_id", ""),
+        total_fetched=original_fetched,
+        staged_count=state.get("staged_count", 0),
+        dedup_count=state.get("dedup_count", 0),
+        error_count=state.get("error_count", 0),
+    )
+    return {"ingest_batch_event": payload}
+
+
+def finalize_run(state: IngestionState) -> IngestionState:
+    """Update the run record with final counts."""
+    run_id = state.get("run_id", "")
+    status = state.get("status", "completed")
+
+    original_fetched = sum(
+        r.records_fetched for r in state.get("source_results", [])
+    )
+
+    _update_run(
+        run_id,
+        status=status if status == "failed" else "completed",
+        total_fetched=original_fetched,
+        staged_count=state.get("staged_count", 0),
+        dedup_count=state.get("dedup_count", 0),
+        error_count=state.get("error_count", 0),
+    )
+
+    log.info(
+        "ingestion_complete",
+        run_id=run_id,
+        total_fetched=original_fetched,
+        staged_count=state.get("staged_count", 0),
+        dedup_count=state.get("dedup_count", 0),
+        error_count=state.get("error_count", 0),
+    )
+    return {"status": status if status == "failed" else "completed"}
+
+
+# ---------------------------------------------------------------------------
+# Graph assembly
+# ---------------------------------------------------------------------------
+
+
+def _build_graph() -> StateGraph:
+    """Assemble the Ingestion Agent LangGraph."""
+    graph = StateGraph(IngestionState)
+
+    graph.add_node("initialize_run", initialize_run)
+    graph.add_node("fetch_sources", fetch_sources)
+    graph.add_node("handle_total_failure", handle_total_failure)
+    graph.add_node("deduplicate", deduplicate)
+    graph.add_node("stage_records", stage_records)
+    graph.add_node("emit_ingest_batch", emit_ingest_batch)
+    graph.add_node("finalize_run", finalize_run)
+
+    graph.set_entry_point("initialize_run")
+    graph.add_edge("initialize_run", "fetch_sources")
+    graph.add_conditional_edges(
+        "fetch_sources",
+        check_fetch_results,
+        {
+            "handle_total_failure": "handle_total_failure",
+            "deduplicate": "deduplicate",
+        },
+    )
+    graph.add_edge("handle_total_failure", "finalize_run")
+    graph.add_edge("deduplicate", "stage_records")
+    graph.add_edge("stage_records", "emit_ingest_batch")
+    graph.add_edge("emit_ingest_batch", "finalize_run")
+    graph.add_edge("finalize_run", END)
+
+    return graph
+
+
+_COMPILED_GRAPH = _build_graph().compile()
+
+
+# ---------------------------------------------------------------------------
+# Agent class
+# ---------------------------------------------------------------------------
+
+
+class IngestionAgent(AgentBase):
+    """Fetches, deduplicates, and stages job postings from external sources.
+
+    Internally powered by a LangGraph state machine.
     """
-    Fetches, deduplicates, and stages job postings from external sources.
 
-    Batch-oriented: receives a trigger event with source/limit/query/location,
-    fetches from adapters, deduplicates, writes to DB, emits IngestBatch.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(agent_id="ingestion-agent")
-        self._jsearch = JSearchAdapter()
-        self._scraper = ScraperAdapter()
+    @property
+    def agent_id(self) -> str:
+        return "ingestion-agent"
 
     def health_check(self) -> dict:
-        """Check DB connectivity and fixture file availability."""
+        """Check DB connectivity and source adapter availability."""
         db_ok = check_db_connection()
-        fixture_ok = _FALLBACK_SCRAPE.exists()
+        fixture_ok = (Path(__file__).parent.parent / "data" / "fixtures" / "fallback_scrape_sample.json").exists()
 
         if db_ok and fixture_ok:
-            status = "ok"
+            status = "healthy"
         elif db_ok or fixture_ok:
             status = "degraded"
         else:
-            status = "down"
+            status = "unhealthy"
 
         return {
             "status": status,
             "agent": self.agent_id,
-            "last_run": None,
-            "metrics": {"db_connected": db_ok, "fixture_available": fixture_ok},
+            "db_reachable": db_ok,
+            "sources": {"fixture_available": fixture_ok},
         }
 
     def process(self, event: EventEnvelope) -> EventEnvelope:
-        """Run a full ingestion batch.
-
-        Expected payload keys:
-            source: "jsearch" | "crawl4ai" | "all"
-            limit:  int (default 50)
-            query:  str (default "software engineer")
-            location: str (default "Washington state")
-        """
+        """Run the ingestion graph and return the result event."""
         payload = event.payload
-        source = payload.get("source", "all")
-        limit = payload.get("limit", 50)
-        query = payload.get("query", "software engineer")
-        location = payload.get("location", "Washington state")
-
         run_id = str(uuid.uuid4())
 
-        log.info(
-            "ingestion_start",
-            run_id=run_id,
-            source=source,
-            limit=limit,
-            correlation_id=event.correlation_id,
-        )
+        # Build region_config from payload (supports both old and new format)
+        region_config = payload.get("region_config")
+        if region_config is None:
+            # Backward compat: old-style payload with source/limit/query/location
+            source = payload.get("source", "crawl4ai")
+            region_config = {
+                "region_id": "default",
+                "display_name": "Default Region",
+                "query_location": payload.get("location", "Washington state"),
+                "radius_miles": 50,
+                "states": ["WA"],
+                "countries": ["US"],
+                "sources": [source] if source != "all" else ["jsearch", "crawl4ai"],
+                "role_categories": [],
+                "keywords": [payload.get("query", "software engineer")],
+            }
 
-        # Create run tracking record
-        with session_scope() as session:
-            run_record = JobIngestionRun(
-                run_id=run_id,
-                source=source,
-                status="running",
-                config_snapshot={"source": source, "limit": limit, "query": query, "location": location},
-            )
-            session.add(run_record)
+        initial_state: IngestionState = {
+            "run_id": run_id,
+            "region_config": region_config,
+            "correlation_id": event.correlation_id,
+            "batch_id": run_id,
+        }
 
-        # Fetch from source adapters
-        try:
-            raw_records = asyncio.run(
-                self._fetch_from_sources(source=source, limit=limit, query=query, location=location)
-            )
-        except Exception as exc:
-            log.error("ingestion_fetch_failed", run_id=run_id, error=str(exc))
-            self._update_run(run_id, status="failed", error=str(exc))
-            return EventEnvelope(
-                correlation_id=event.correlation_id,
-                agent_id=self.agent_id,
-                payload={
-                    "event_type": "SourceFailure",
-                    "run_id": run_id,
-                    "source": source,
-                    "error": str(exc),
-                },
-            )
-
-        if not raw_records:
-            log.warning("ingestion_no_records", run_id=run_id, source=source)
-            self._update_run(run_id, status="completed", total_fetched=0)
-            return EventEnvelope(
-                correlation_id=event.correlation_id,
-                agent_id=self.agent_id,
-                payload={
-                    "event_type": "IngestBatch",
-                    "batch_id": run_id,
-                    "source": source,
-                    "total_fetched": 0,
-                    "duplicates_skipped": 0,
-                    "records_staged": 0,
-                    "dead_letter_count": 0,
-                    "staged_record_ids": [],
-                },
-            )
-
-        # Deduplicate
-        with session_scope() as session:
-            dedup_result = deduplicate_batch(raw_records, session)
-
-        # Stage new records
-        staged_ids: list[int] = []
-        dead_letter_count = 0
-
-        with session_scope() as session:
-            for record in dedup_result.new_records:
-                try:
-                    row = RawIngestedJob(
-                        ingestion_run_id=run_id,
-                        source=record["source"],
-                        external_id=record["external_id"],
-                        raw_payload_hash=record["raw_payload_hash"],
-                        title=record.get("title", ""),
-                        company=record.get("company", ""),
-                        location=record.get("location"),
-                        url=record.get("url"),
-                        date_posted=record.get("date_posted"),
-                        raw_text=record.get("raw_text"),
-                        raw_payload=record.get("raw_payload"),
-                        status="staged",
-                    )
-                    session.add(row)
-                    session.flush()
-                    staged_ids.append(row.id)
-                except Exception as exc:
-                    log.warning(
-                        "ingestion_stage_failed",
-                        external_id=record.get("external_id"),
-                        error=str(exc),
-                    )
-                    dead_letter_count += 1
-                    self._quarantine(run_id, record, str(exc))
-
-        # Update run tracking
-        self._update_run(
-            run_id,
-            status="completed",
-            total_fetched=len(raw_records),
-            duplicates_skipped=dedup_result.duplicates_skipped,
-            records_staged=len(staged_ids),
-            dead_letter_count=dead_letter_count,
-        )
-
-        log.info(
-            "ingestion_complete",
-            run_id=run_id,
-            total_fetched=len(raw_records),
-            duplicates_skipped=dedup_result.duplicates_skipped,
-            records_staged=len(staged_ids),
-            dead_letter_count=dead_letter_count,
-        )
+        result = _COMPILED_GRAPH.invoke(initial_state)
 
         return EventEnvelope(
             correlation_id=event.correlation_id,
             agent_id=self.agent_id,
-            payload={
+            payload=result.get("ingest_batch_event", {
                 "event_type": "IngestBatch",
                 "batch_id": run_id,
-                "source": source,
-                "total_fetched": len(raw_records),
-                "duplicates_skipped": dedup_result.duplicates_skipped,
-                "records_staged": len(staged_ids),
-                "dead_letter_count": dead_letter_count,
-                "staged_record_ids": staged_ids,
-            },
+                "total_fetched": 0,
+                "staged_count": 0,
+            }),
         )
 
-    async def _fetch_from_sources(
-        self, *, source: str, limit: int, query: str, location: str
-    ) -> list[dict]:
-        """Fetch records from the requested source(s)."""
-        records: list[dict] = []
 
-        if source in ("jsearch", "all"):
-            records.extend(await self._jsearch.fetch(limit=limit, query=query, location=location))
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-        if source in ("crawl4ai", "all"):
-            remaining = max(0, limit - len(records))
-            if remaining > 0 or source == "crawl4ai":
-                fetch_limit = limit if source == "crawl4ai" else remaining
-                records.extend(await self._scraper.fetch(limit=fetch_limit, query=query, location=location))
 
-        return records
+def _update_run(run_id: str, *, status: str, **kwargs: object) -> None:
+    """Update the run tracking record."""
+    try:
+        with session_scope() as session:
+            run = session.query(JobIngestionRun).filter_by(run_id=run_id).first()
+            if run:
+                run.status = status
+                run.completed_at = datetime.now(UTC)
+                for key, value in kwargs.items():
+                    if hasattr(run, key):
+                        setattr(run, key, value)
+    except Exception as exc:
+        log.warning("run_update_failed", run_id=run_id, error=str(exc))
 
-    def _update_run(self, run_id: str, *, status: str, **kwargs: object) -> None:
-        """Update the run tracking record."""
-        try:
-            with session_scope() as session:
-                run = session.query(JobIngestionRun).filter_by(run_id=run_id).first()
-                if run:
-                    run.status = status
-                    run.completed_at = datetime.now(UTC)
-                    for key, value in kwargs.items():
-                        if hasattr(run, key):
-                            setattr(run, key, value)
-        except Exception as exc:
-            log.warning("ingestion_run_update_failed", run_id=run_id, error=str(exc))
 
-    def _quarantine(self, run_id: str, record: dict, error: str) -> None:
-        """Write a failed record to the dead letter directory."""
-        _DEAD_LETTER_DIR.mkdir(parents=True, exist_ok=True)
-        external_id = record.get("external_id", "unknown")
-        path = _DEAD_LETTER_DIR / f"{run_id}_{external_id}.json"
-        try:
-            path.write_text(
-                json.dumps({"record": record, "error": error, "run_id": run_id}, indent=2, default=str),
-                encoding="utf-8",
-            )
-        except Exception as exc:
-            log.warning("dead_letter_write_failed", path=str(path), error=str(exc))
+def _quarantine_to_file(run_id: str, record: dict, error: str) -> None:
+    """Write a failed record to the dead letter directory."""
+    _DEAD_LETTER_DIR.mkdir(parents=True, exist_ok=True)
+    external_id = record.get("external_id", "unknown")
+    path = _DEAD_LETTER_DIR / f"{run_id}_{external_id}.json"
+    try:
+        path.write_text(
+            json.dumps({"record": record, "error": error, "run_id": run_id}, indent=2, default=str),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        log.warning("dead_letter_write_failed", path=str(path), error=str(exc))
 
 
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
+
 
 def _cli() -> None:
     """CLI for running the Ingestion Agent standalone."""

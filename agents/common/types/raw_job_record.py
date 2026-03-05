@@ -7,7 +7,6 @@ Consumed by the deduplicator and stored in raw_ingested_jobs.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -27,28 +26,28 @@ class RawJobRecord(BaseModel):
     description: str = ""
 
     # Location (structured)
-    city: Optional[str] = None
-    state: Optional[str] = None
-    country: Optional[str] = None
-    is_remote: Optional[bool] = None
+    city: str | None = None
+    state: str | None = None
+    country: str | None = None
+    is_remote: bool | None = None
 
     # Dates
-    date_posted: Optional[datetime] = None
+    date_posted: datetime | None = None
     date_ingested: datetime = Field(default_factory=datetime.utcnow)
 
     # Salary
-    salary_raw: Optional[str] = None
-    salary_min: Optional[float] = None
-    salary_max: Optional[float] = None
-    salary_currency: Optional[str] = None
-    salary_period: Optional[str] = None
+    salary_raw: str | None = None
+    salary_min: float | None = None
+    salary_max: float | None = None
+    salary_currency: str | None = None
+    salary_period: str | None = None
 
     # Classification
-    employment_type: Optional[str] = None
-    experience_level: Optional[str] = None
+    employment_type: str | None = None
+    experience_level: str | None = None
 
     # URLs
-    job_url: Optional[str] = None
+    job_url: str | None = None
     source_url: str = ""
 
     # Raw payload (full API response)

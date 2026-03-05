@@ -7,7 +7,6 @@ Stored in normalized_jobs table.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
@@ -27,30 +26,30 @@ class JobRecord(BaseModel):
     # Core fields
     title: str
     company: str
-    description: Optional[str] = None
-    job_url: Optional[str] = None
+    description: str | None = None
+    job_url: str | None = None
 
     # Location (structured)
-    city: Optional[str] = None
-    state_province: Optional[str] = None
-    country: Optional[str] = None
-    work_arrangement: Optional[str] = None
-    is_remote: Optional[bool] = None
+    city: str | None = None
+    state_province: str | None = None
+    country: str | None = None
+    work_arrangement: str | None = None
+    is_remote: bool | None = None
 
     # Dates
-    date_posted: Optional[datetime] = None
+    date_posted: datetime | None = None
 
     # Salary
-    salary_raw: Optional[str] = None
-    salary_min: Optional[float] = None
-    salary_max: Optional[float] = None
-    salary_currency: Optional[str] = None
-    salary_period: Optional[str] = None
+    salary_raw: str | None = None
+    salary_min: float | None = None
+    salary_max: float | None = None
+    salary_currency: str | None = None
+    salary_period: str | None = None
 
     # Classification
-    employment_type: Optional[str] = None
-    experience_level: Optional[str] = None
-    occupation_code: Optional[str] = None
+    employment_type: str | None = None
+    experience_level: str | None = None
+    occupation_code: str | None = None
 
     # Mapper provenance
     mapper_used: str = ""
@@ -71,8 +70,7 @@ class JobRecord(BaseModel):
 
     @field_validator("salary_max")
     @classmethod
-    def salary_max_gte_min(cls, v: Optional[float], info) -> Optional[float]:
-        if v is not None and info.data.get("salary_min") is not None:
-            if v < info.data["salary_min"]:
-                raise ValueError("salary_max must be >= salary_min")
+    def salary_max_gte_min(cls, v: float | None, info) -> float | None:
+        if v is not None and info.data.get("salary_min") is not None and v < info.data["salary_min"]:
+            raise ValueError("salary_max must be >= salary_min")
         return v

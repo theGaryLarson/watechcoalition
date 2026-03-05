@@ -6,7 +6,7 @@ Two fingerprint types:
 - **Storage fingerprint** (``compute_storage_hash``): sha256(source | external_id | title | company | date_posted)
   — source-specific, stored as ``raw_payload_hash`` in the DB for cross-batch dedup.
 
-JSearch wins over crawl4ai when the same job appears in both sources (IC #9).
+JSearch wins over crawl4ai when the same job appears in both sources (Product #9).
 
 EXP-003 hook: ``compute_fingerprint()`` is the single method that Nestor's
 dedup experiment results would replace.
@@ -25,7 +25,7 @@ from agents.common.data_store.models import RawIngestedJob
 
 log = structlog.get_logger()
 
-# Source priority: lower number = higher priority (IC #9: JSearch wins)
+# Source priority: lower number = higher priority (Product #9: JSearch wins)
 _SOURCE_PRIORITY = {"jsearch": 0, "crawl4ai": 1, "web_scrape": 2}
 
 

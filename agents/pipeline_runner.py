@@ -12,9 +12,9 @@ Usage (from the repo root):
 Design decisions:
 
 1. BATCH-ORIENTED PIPELINE
-   Ingestion Agent receives a trigger event with source/limit/query/location
+   Ingestion Agent receives a trigger event with a ``region_config`` dict
    and fetches + deduplicates + stages records itself.  The Normalization
-   Agent consumes the IngestBatch event with staged_record_ids.
+   Agent reads pending records from the DB (processing_status='pending').
 
 2. HEALTH CHECKS FIRST
    All Phase 1 agent health checks run before any processing.
@@ -119,7 +119,7 @@ def run_health_checks(pipeline: list[tuple[Any, bool]]) -> bool:
         result = agent.health_check()
         status = result.get("status", "down")
 
-        if status in ("ok", "degraded"):
+        if status in ("ok", "healthy", "degraded"):
             log.info(
                 "health_check_passed",
                 agent_id=agent.agent_id,
@@ -250,12 +250,19 @@ def main() -> None:
 
     log.info("health_checks_passed", note="all Phase 1 agents healthy — starting run")
 
-    # Batch trigger: Ingestion Agent will fetch from crawl4ai fixture fallback
+    # Batch trigger with region_config (backward-compat: old keys also accepted)
     trigger_payload = {
-        "source": "crawl4ai",
-        "limit": 10,
-        "query": "software engineer",
-        "location": "Washington state",
+        "region_config": {
+            "region_id": "wa-default",
+            "display_name": "Washington State",
+            "query_location": "Washington state",
+            "radius_miles": 50,
+            "states": ["WA"],
+            "countries": ["US"],
+            "sources": ["crawl4ai"],
+            "role_categories": ["Software Engineering"],
+            "keywords": ["software engineer"],
+        },
     }
 
     entries = run_pipeline(PIPELINE, correlation_id, trigger_payload)
