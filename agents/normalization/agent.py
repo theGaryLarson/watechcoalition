@@ -348,7 +348,7 @@ class NormalizationAgent(AgentBase):
         """Check DB connectivity."""
         db_ok = check_db_connection()
         return {
-            "status": "healthy" if db_ok else "degraded",
+            "status": "ok" if db_ok else "degraded",
             "agent": self.agent_id,
             "db_reachable": db_ok,
         }

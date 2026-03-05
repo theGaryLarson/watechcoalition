@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 from agents.common.event_envelope import EventEnvelope
 from agents.normalization.agent import NormalizationAgent
 
@@ -20,10 +22,21 @@ class TestNormalizationAgent:
         assert "status" in result
         assert result["status"] in ("ok", "degraded", "down")
         assert result["agent"] == "normalization-agent"
-        assert "metrics" in result
+        assert "db_reachable" in result
 
-    def test_process_empty_batch(self) -> None:
-        """Empty staged_record_ids returns NormalizationComplete with 0 counts."""
+    @patch("agents.normalization.agent.session_scope")
+    @patch("agents.normalization.agent.check_db_connection", return_value=True)
+    def test_process_empty_batch(self, mock_db, mock_session) -> None:
+        """Empty pending records returns NormalizationComplete with 0 counts."""
+        # Mock session_scope to return a session with no pending records
+        mock_sess = MagicMock()
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = []
+        mock_sess.query.return_value = mock_query
+        mock_session.return_value.__enter__ = MagicMock(return_value=mock_sess)
+        mock_session.return_value.__exit__ = MagicMock(return_value=False)
+
         agent = NormalizationAgent()
         event = EventEnvelope(
             correlation_id="test-1",
@@ -31,7 +44,6 @@ class TestNormalizationAgent:
             payload={
                 "event_type": "IngestBatch",
                 "batch_id": "test-batch",
-                "staged_record_ids": [],
             },
         )
         out = agent.process(event)
@@ -39,8 +51,18 @@ class TestNormalizationAgent:
         assert out.agent_id == "normalization-agent"
         assert out.payload["normalized_count"] == 0
 
-    def test_process_preserves_correlation_id(self) -> None:
+    @patch("agents.normalization.agent.session_scope")
+    @patch("agents.normalization.agent.check_db_connection", return_value=True)
+    def test_process_preserves_correlation_id(self, mock_db, mock_session) -> None:
         """Correlation ID passes through unchanged."""
+        mock_sess = MagicMock()
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = []
+        mock_sess.query.return_value = mock_query
+        mock_session.return_value.__enter__ = MagicMock(return_value=mock_sess)
+        mock_session.return_value.__exit__ = MagicMock(return_value=False)
+
         agent = NormalizationAgent()
         event = EventEnvelope(
             correlation_id="test-1",
@@ -48,7 +70,6 @@ class TestNormalizationAgent:
             payload={
                 "event_type": "IngestBatch",
                 "batch_id": "test-batch",
-                "staged_record_ids": [],
             },
         )
         out = agent.process(event)

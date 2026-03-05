@@ -335,11 +335,11 @@ class IngestionAgent(AgentBase):
         fixture_ok = (Path(__file__).parent.parent / "data" / "fixtures" / "fallback_scrape_sample.json").exists()
 
         if db_ok and fixture_ok:
-            status = "healthy"
+            status = "ok"
         elif db_ok or fixture_ok:
             status = "degraded"
         else:
-            status = "unhealthy"
+            status = "down"
 
         return {
             "status": status,

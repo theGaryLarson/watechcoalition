@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from agents.common.event_envelope import EventEnvelope
 from agents.ingestion.agent import IngestionAgent
@@ -22,7 +22,8 @@ class TestIngestionAgent:
         assert "status" in result
         assert result["status"] in ("ok", "degraded", "down")
         assert result["agent"] == "ingestion-agent"
-        assert "metrics" in result
+        assert "db_reachable" in result
+        assert "sources" in result
 
     @patch("agents.ingestion.agent.session_scope")
     @patch("agents.ingestion.agent.check_db_connection", return_value=True)
@@ -35,6 +36,11 @@ class TestIngestionAgent:
 
         # Mock dedup to return empty result (no DB needed)
         mock_dedup.return_value = DedupResult(new_records=[], duplicates_skipped=0)
+
+        # Mock session_scope context manager
+        mock_ctx = MagicMock()
+        mock_session.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_session.return_value.__exit__ = MagicMock(return_value=False)
 
         agent = IngestionAgent()
         trigger = EventEnvelope(
@@ -56,6 +62,10 @@ class TestIngestionAgent:
         from agents.ingestion.deduplicator import DedupResult
 
         mock_dedup.return_value = DedupResult(new_records=[], duplicates_skipped=0)
+
+        mock_ctx = MagicMock()
+        mock_session.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_session.return_value.__exit__ = MagicMock(return_value=False)
 
         agent = IngestionAgent()
         trigger = EventEnvelope(
