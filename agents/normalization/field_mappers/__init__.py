@@ -1,7 +1,16 @@
-"""Per-source field mappers for normalization."""
+"""Backward-compatibility shim — use ``agents.normalization.mappers`` instead."""
 
-from agents.normalization.field_mappers.base_mapper import FieldMapper
-from agents.normalization.field_mappers.jsearch_mapper import JSearchMapper
-from agents.normalization.field_mappers.scraper_mapper import ScraperMapper
+from agents.normalization.mappers.base import FieldMapper, MapperBase
+from agents.normalization.mappers.crawl4ai_indeed import Crawl4AIIndeedMapper
+from agents.normalization.mappers.jsearch import JSearchMapper
 
-__all__ = ["FieldMapper", "JSearchMapper", "ScraperMapper"]
+# Keep the old name importable
+ScraperMapper = Crawl4AIIndeedMapper
+
+__all__ = [
+    "Crawl4AIIndeedMapper",
+    "FieldMapper",
+    "JSearchMapper",
+    "MapperBase",
+    "ScraperMapper",
+]

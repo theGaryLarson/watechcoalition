@@ -1,16 +1,5 @@
-"""Abstract base for per-source field mappers."""
+"""Backward-compatibility shim — use ``agents.normalization.mappers.base`` instead."""
 
-from __future__ import annotations
+from agents.normalization.mappers.base import FieldMapper, MapperBase  # noqa: F401
 
-from abc import ABC, abstractmethod
-
-
-class FieldMapper(ABC):
-    """Maps raw source-specific fields to canonical normalized fields."""
-
-    @abstractmethod
-    def map(self, raw: dict) -> dict:
-        """Transform a raw record dict into canonical field names.
-
-        Returns a dict suitable for constructing a ``JobRecord``.
-        """
+__all__ = ["FieldMapper", "MapperBase"]
