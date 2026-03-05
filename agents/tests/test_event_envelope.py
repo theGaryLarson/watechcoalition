@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-from pydantic import ValidationError
-
 from agents.common.event_envelope import EventEnvelope
 
 
@@ -32,10 +29,14 @@ class TestEventEnvelope:
         )
         assert a.event_id != b.event_id
 
-    def test_correlation_id_required(self) -> None:
-        """Missing correlation_id raises a Pydantic ValidationError."""
-        with pytest.raises(ValidationError):
-            EventEnvelope(agent_id="test-agent", payload={})  # type: ignore[call-arg]
+    def test_no_args_instantiation(self) -> None:
+        """EventEnvelope() with no args uses defaults for all fields."""
+        env = EventEnvelope()
+        assert env.correlation_id == ""
+        assert env.agent_id == ""
+        assert env.payload == {}
+        assert env.schema_version == "1.0"
+        assert env.event_id  # auto-generated UUID
 
     def test_defaults(self) -> None:
         """Timestamp is auto-set and schema_version defaults to '1.0'."""
