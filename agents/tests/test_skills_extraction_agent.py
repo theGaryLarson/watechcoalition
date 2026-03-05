@@ -39,9 +39,7 @@ class TestSkillsExtractionAgent:
             result = agent.health_check()
         assert result["status"] == "down"
 
-    def test_process_emits_skills_extracted(
-        self, normalization_event: EventEnvelope
-    ) -> None:
+    def test_process_emits_skills_extracted(self, normalization_event: EventEnvelope) -> None:
         """Output event_type is SkillsExtracted."""
         agent = SkillsExtractionAgent()
         agent.health_check()  # pre-load fixture
@@ -49,9 +47,7 @@ class TestSkillsExtractionAgent:
         assert out.payload["event_type"] == "SkillsExtracted"
         assert out.agent_id == "skills-extraction-agent"
 
-    def test_process_returns_fixture_skills(
-        self, normalization_event: EventEnvelope
-    ) -> None:
+    def test_process_returns_fixture_skills(self, normalization_event: EventEnvelope) -> None:
         """Output contains a non-empty skills list with expected keys."""
         agent = SkillsExtractionAgent()
         agent.health_check()  # pre-load fixture

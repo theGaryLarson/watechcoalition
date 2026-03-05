@@ -16,6 +16,7 @@ from agents.common.event_envelope import EventEnvelope
 # Raw posting (input to pipeline runner / Ingestion Agent)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def sample_raw_posting() -> dict:
     """A single raw posting matching the fallback_scrape_sample.json shape."""
@@ -47,6 +48,7 @@ def sample_event(sample_raw_posting: dict) -> EventEnvelope:
 # ---------------------------------------------------------------------------
 # Stage-specific events (each is the output of the named agent)
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def ingest_event() -> EventEnvelope:

@@ -41,7 +41,7 @@ import streamlit as st
 # Paths
 # ---------------------------------------------------------------------------
 
-_HERE = Path(__file__).parent.parent   # agents/
+_HERE = Path(__file__).parent.parent  # agents/
 _RUN_LOG_PATH = _HERE / "data" / "output" / "pipeline_run.json"
 
 # The canonical agent order — used for sorting the journey timeline.
@@ -62,6 +62,7 @@ _AGENT_ORDER_INDEX = {a: i for i, a in enumerate(_AGENT_ORDER)}
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
+
 
 @st.cache_data
 def load_run_log() -> list[dict]:
@@ -89,6 +90,7 @@ def sort_key(cid: str) -> int:
 # Page 1 — Pipeline Run Summary
 # ---------------------------------------------------------------------------
 
+
 def page_run_summary(entries: list[dict]) -> None:
     st.title("Pipeline Run Summary")
 
@@ -106,7 +108,7 @@ def page_run_summary(entries: list[dict]) -> None:
     # -- Headline metrics
     timestamps = [e["timestamp"] for e in entries if "timestamp" in e]
     run_start = min(timestamps) if timestamps else "—"
-    run_end   = max(timestamps) if timestamps else "—"
+    run_end = max(timestamps) if timestamps else "—"
 
     # Compute duration from earliest to latest timestamp.
     duration_str = "—"
@@ -179,14 +181,13 @@ def page_run_summary(entries: list[dict]) -> None:
     if complete_count == total_count:
         st.success(f"All {total_count} records completed all seven Phase 1 stages.")
     else:
-        st.warning(
-            f"{complete_count} / {total_count} records completed all Phase 1 stages."
-        )
+        st.warning(f"{complete_count} / {total_count} records completed all Phase 1 stages.")
 
 
 # ---------------------------------------------------------------------------
 # Page 2 — Record Journey
 # ---------------------------------------------------------------------------
+
 
 def page_record_journey(entries: list[dict]) -> None:
     st.title("Record Journey")
@@ -212,11 +213,11 @@ def page_record_journey(entries: list[dict]) -> None:
         return f"Record {cid}"
 
     sorted_cids = sorted(record_map.keys(), key=sort_key)
-    labels      = [label(cid) for cid in sorted_cids]
+    labels = [label(cid) for cid in sorted_cids]
     label_to_cid = dict(zip(labels, sorted_cids, strict=True))
 
     selected_label = st.selectbox("Select a record to trace", labels)
-    selected_cid   = label_to_cid[selected_label]
+    selected_cid = label_to_cid[selected_label]
 
     st.markdown("---")
 
@@ -237,11 +238,11 @@ def page_record_journey(entries: list[dict]) -> None:
     st.markdown("#### Stage-by-stage timeline")
 
     for entry in record_entries:
-        agent_id   = entry.get("agent_id", "—")
-        payload    = entry.get("payload", {})
+        agent_id = entry.get("agent_id", "—")
+        payload = entry.get("payload", {})
         event_type = payload.get("event_type", agent_id)
-        timestamp  = entry.get("timestamp", "—")
-        is_phase2  = event_type == "Phase2Skipped"
+        timestamp = entry.get("timestamp", "—")
+        is_phase2 = event_type == "Phase2Skipped"
 
         status_str = "SKIPPED" if is_phase2 else "OK"
         label_str = f"{status_str}  **{agent_id}**  ->  `{event_type}`  |  {timestamp}"
@@ -259,12 +260,22 @@ def page_record_journey(entries: list[dict]) -> None:
 
             # Payload summary — show the most useful fields prominently.
             summary_fields = [
-                "event_type", "posting_id", "title", "company",
-                "seniority", "role_classification",
-                "quality_score", "spam_score", "is_spam",
-                "normalization_status", "extraction_status",
-                "enrichment_status", "render_status", "pipeline_stage",
-                "run_id", "total_postings",
+                "event_type",
+                "posting_id",
+                "title",
+                "company",
+                "seniority",
+                "role_classification",
+                "quality_score",
+                "spam_score",
+                "is_spam",
+                "normalization_status",
+                "extraction_status",
+                "enrichment_status",
+                "render_status",
+                "pipeline_stage",
+                "run_id",
+                "total_postings",
             ]
             summary = {k: payload[k] for k in summary_fields if k in payload}
             if summary:
@@ -296,6 +307,7 @@ def page_record_journey(entries: list[dict]) -> None:
 # Page 3 — Batch Insights
 # ---------------------------------------------------------------------------
 
+
 def page_batch_insights(entries: list[dict]) -> None:
     st.title("Batch Insights")
     st.caption(
@@ -325,11 +337,7 @@ def page_batch_insights(entries: list[dict]) -> None:
     st.subheader("Top Skills")
     top_skills = p.get("top_skills", [])
     if top_skills:
-        df_skills = (
-            pd.DataFrame(top_skills)
-            .sort_values("count", ascending=False)
-            .set_index("skill")
-        )
+        df_skills = pd.DataFrame(top_skills).sort_values("count", ascending=False).set_index("skill")
         st.bar_chart(df_skills["count"])
     else:
         st.info("No top_skills data in analytics payload.")
@@ -418,7 +426,7 @@ def page_batch_insights(entries: list[dict]) -> None:
     col3, col4 = st.columns(2)
 
     avg_quality = p.get("avg_quality_score")
-    avg_spam    = p.get("avg_spam_score")
+    avg_spam = p.get("avg_spam_score")
 
     if avg_quality is not None:
         col3.metric(
@@ -440,16 +448,18 @@ def page_batch_insights(entries: list[dict]) -> None:
         quality_rows = []
         for e in enrichment_entries:
             ep = e.get("payload", {})
-            quality_rows.append({
-                "Posting ID":  ep.get("posting_id"),
-                "Title":       ep.get("title"),
-                "Company":     ep.get("company"),
-                "Role":        ep.get("role_classification"),
-                "Seniority":   ep.get("seniority"),
-                "Quality":     ep.get("quality_score"),
-                "Spam":        ep.get("spam_score"),
-                "Is Spam":     ep.get("is_spam"),
-            })
+            quality_rows.append(
+                {
+                    "Posting ID": ep.get("posting_id"),
+                    "Title": ep.get("title"),
+                    "Company": ep.get("company"),
+                    "Role": ep.get("role_classification"),
+                    "Seniority": ep.get("seniority"),
+                    "Quality": ep.get("quality_score"),
+                    "Spam": ep.get("spam_score"),
+                    "Is Spam": ep.get("is_spam"),
+                }
+            )
         df_quality = pd.DataFrame(quality_rows).sort_values("Posting ID")
         st.dataframe(df_quality, use_container_width=True, hide_index=True)
 
@@ -457,6 +467,7 @@ def page_batch_insights(entries: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 # App entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     st.set_page_config(
@@ -480,9 +491,7 @@ def main() -> None:
     )
 
     st.sidebar.markdown("---")
-    st.sidebar.caption(
-        f"Data source:  \n`{_RUN_LOG_PATH.name}`"
-    )
+    st.sidebar.caption(f"Data source:  \n`{_RUN_LOG_PATH.name}`")
 
     if not _RUN_LOG_PATH.exists():
         st.sidebar.error("Run log not found.  Run the pipeline first.")

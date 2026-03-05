@@ -15,11 +15,7 @@ def _tables_exist() -> bool:
     """Check if required DB tables exist."""
     try:
         with session_scope() as session:
-            session.execute(
-                __import__("sqlalchemy").text(
-                    "SELECT 1 FROM dbo.raw_ingested_jobs LIMIT 1"
-                )
-            )
+            session.execute(__import__("sqlalchemy").text("SELECT 1 FROM dbo.raw_ingested_jobs LIMIT 1"))
         return True
     except Exception:
         return False
@@ -34,7 +30,6 @@ def _skip_if_no_db():
 
 
 class TestNormalizationAgentIntegration:
-
     def test_health_check_with_db(self) -> None:
         agent = NormalizationAgent()
         result = agent.health_check()

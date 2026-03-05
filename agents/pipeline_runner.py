@@ -92,20 +92,21 @@ log = structlog.get_logger()
 # ---------------------------------------------------------------------------
 
 PIPELINE: list[tuple[Any, bool]] = [
-    (IngestionAgent(),          False),
-    (NormalizationAgent(),      False),
-    (SkillsExtractionAgent(),   False),
-    (EnrichmentAgent(),         False),
-    (AnalyticsAgent(),          False),
-    (VisualizationAgent(),      False),
-    (OrchestrationAgent(),      False),
-    (DemandAnalysisAgent(),     True),
+    (IngestionAgent(), False),
+    (NormalizationAgent(), False),
+    (SkillsExtractionAgent(), False),
+    (EnrichmentAgent(), False),
+    (AnalyticsAgent(), False),
+    (VisualizationAgent(), False),
+    (OrchestrationAgent(), False),
+    (DemandAnalysisAgent(), True),
 ]
 
 
 # ---------------------------------------------------------------------------
 # Health checks
 # ---------------------------------------------------------------------------
+
 
 def run_health_checks(pipeline: list[tuple[Any, bool]]) -> bool:
     """Run health_check() on every agent.
@@ -149,6 +150,7 @@ def run_health_checks(pipeline: list[tuple[Any, bool]]) -> bool:
 # Pipeline execution
 # ---------------------------------------------------------------------------
 
+
 def run_pipeline(
     pipeline: list[tuple[Any, bool]],
     correlation_id: str,
@@ -168,7 +170,6 @@ def run_pipeline(
     )
 
     for agent, is_phase2 in pipeline:
-
         # Phase 2 stub
         if is_phase2:
             with contextlib.suppress(Exception):
@@ -217,14 +218,16 @@ def run_pipeline(
             event_type=outbound.payload.get("event_type"),
         )
 
-        run_entries.append({
-            "agent_id": outbound.agent_id,
-            "event_id": outbound.event_id,
-            "correlation_id": outbound.correlation_id,
-            "timestamp": outbound.timestamp.isoformat(),
-            "schema_version": outbound.schema_version,
-            "payload": outbound.payload,
-        })
+        run_entries.append(
+            {
+                "agent_id": outbound.agent_id,
+                "event_id": outbound.event_id,
+                "correlation_id": outbound.correlation_id,
+                "timestamp": outbound.timestamp.isoformat(),
+                "schema_version": outbound.schema_version,
+                "payload": outbound.payload,
+            }
+        )
 
         current_event = outbound
 
@@ -234,6 +237,7 @@ def run_pipeline(
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     """Send a batch trigger through the pipeline."""

@@ -20,7 +20,6 @@ import structlog
 from agents.common.types.raw_job_record import RawJobRecord
 from agents.common.types.region_config import RegionConfig
 from agents.ingestion.sources.base_adapter import SourceAdapter
-from agents.ingestion.sources.crawl4ai_indeed import Crawl4AIIndeedAdapter
 
 log = structlog.get_logger()
 
@@ -94,4 +93,3 @@ class Crawl4AIDebugAdapter(SourceAdapter):
         if not _is_debug_mode():
             return {"reachable": False, "source": self.source_name}
         return {"reachable": _FALLBACK_SCRAPE.exists(), "source": self.source_name}
-

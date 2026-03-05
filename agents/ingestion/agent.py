@@ -97,22 +97,26 @@ async def _fetch_all_sources(
     source_results: list[SourceResult] = []
     errors: list[str] = []
 
-    for (name, _adapter), result in zip(adapters, results):
+    for (name, _adapter), result in zip(adapters, results, strict=False):
         if isinstance(result, BaseException):
             err_msg = f"{name}: {result}"
             errors.append(err_msg)
-            source_results.append(SourceResult(
-                source_name=name,
-                records_fetched=0,
-                error=str(result),
-            ))
+            source_results.append(
+                SourceResult(
+                    source_name=name,
+                    records_fetched=0,
+                    error=str(result),
+                )
+            )
             log.warning("source_fetch_failed", source=name, error=str(result))
         else:
             all_records.extend(result)
-            source_results.append(SourceResult(
-                source_name=name,
-                records_fetched=len(result),
-            ))
+            source_results.append(
+                SourceResult(
+                    source_name=name,
+                    records_fetched=len(result),
+                )
+            )
             log.info("source_fetch_ok", source=name, count=len(result))
 
     return all_records, source_results, errors
@@ -138,9 +142,7 @@ def fetch_sources(state: IngestionState) -> IngestionState:
             keywords=region_cfg.get("keywords", [region_cfg.get("query", "software engineer")]),
         )
 
-    all_records, source_results, errors = asyncio.run(
-        _fetch_all_sources(sources, region)
-    )
+    all_records, source_results, errors = asyncio.run(_fetch_all_sources(sources, region))
 
     return {
         "fetched_records": all_records,
@@ -253,9 +255,7 @@ def emit_ingest_batch(state: IngestionState) -> IngestionState:
     source_names = region_cfg.get("sources", ["crawl4ai_indeed"])
     source_label = ",".join(source_names) if len(source_names) > 1 else source_names[0]
 
-    original_fetched = sum(
-        r.records_fetched for r in state.get("source_results", [])
-    )
+    original_fetched = sum(r.records_fetched for r in state.get("source_results", []))
 
     payload = ingest_batch_payload(
         batch_id=state.get("run_id", ""),
@@ -274,9 +274,7 @@ def finalize_run(state: IngestionState) -> IngestionState:
     run_id = state.get("run_id", "")
     status = state.get("status", "completed")
 
-    original_fetched = sum(
-        r.records_fetched for r in state.get("source_results", [])
-    )
+    original_fetched = sum(r.records_fetched for r in state.get("source_results", []))
 
     _update_run(
         run_id,
@@ -399,10 +397,7 @@ class IngestionAgent(AgentBase):
             except Exception:
                 sources[key] = False
 
-        if db_ok:
-            status = "ok"
-        else:
-            status = "degraded"
+        status = "ok" if db_ok else "degraded"
 
         return {
             "status": status,
@@ -441,12 +436,15 @@ class IngestionAgent(AgentBase):
 
         result = _COMPILED_GRAPH.invoke(initial_state)
 
-        result_payload = result.get("ingest_batch_event", {
-            "event_type": "IngestBatch",
-            "batch_id": run_id,
-            "total_fetched": 0,
-            "staged_count": 0,
-        })
+        result_payload = result.get(
+            "ingest_batch_event",
+            {
+                "event_type": "IngestBatch",
+                "batch_id": run_id,
+                "total_fetched": 0,
+                "staged_count": 0,
+            },
+        )
 
         # Update instance-level last_run tracking
         self._last_run_at = datetime.now(UTC)
@@ -511,7 +509,8 @@ def _cli() -> None:
     all_sources = ["jsearch", "crawl4ai_indeed", "crawl4ai_usajobs"]
 
     parser.add_argument(
-        "--sources", nargs="+",
+        "--sources",
+        nargs="+",
         choices=all_sources,
         default=all_sources,
         help="Source adapters to fetch from",
@@ -524,6 +523,7 @@ def _cli() -> None:
     if args.migrate:
         from agents.common.data_store.database import get_engine
         from agents.common.data_store.migrations import run_migrations
+
         run_migrations(get_engine())
 
     agent = IngestionAgent()

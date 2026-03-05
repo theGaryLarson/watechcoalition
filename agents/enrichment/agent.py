@@ -29,9 +29,7 @@ from pathlib import Path
 from agents.common.base_agent import BaseAgent
 from agents.common.event_envelope import EventEnvelope
 
-_FIXTURE_PATH = (
-    Path(__file__).parent.parent / "data" / "fixtures" / "fixture_enriched.json"
-)
+_FIXTURE_PATH = Path(__file__).parent.parent / "data" / "fixtures" / "fixture_enriched.json"
 
 
 class EnrichmentAgent(BaseAgent):

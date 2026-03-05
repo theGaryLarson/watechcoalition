@@ -30,9 +30,7 @@ class TestEnrichmentAgent:
             result = agent.health_check()
         assert result["status"] == "down"
 
-    def test_process_emits_record_enriched(
-        self, skills_event: EventEnvelope
-    ) -> None:
+    def test_process_emits_record_enriched(self, skills_event: EventEnvelope) -> None:
         """Output event_type is RecordEnriched."""
         agent = EnrichmentAgent()
         agent.health_check()  # pre-load fixture
@@ -40,9 +38,7 @@ class TestEnrichmentAgent:
         assert out.payload["event_type"] == "RecordEnriched"
         assert out.agent_id == "enrichment-agent"
 
-    def test_process_carries_skills_forward(
-        self, skills_event: EventEnvelope
-    ) -> None:
+    def test_process_carries_skills_forward(self, skills_event: EventEnvelope) -> None:
         """Skills from the upstream SkillsExtracted event are preserved in the output."""
         agent = EnrichmentAgent()
         agent.health_check()  # pre-load fixture

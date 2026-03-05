@@ -165,6 +165,7 @@ class Crawl4AIIndeedAdapter(SourceAdapter):
         """Return adapter readiness status."""
         try:
             import crawl4ai  # noqa: F401
+
             reachable = True
         except ImportError:
             reachable = False

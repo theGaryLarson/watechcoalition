@@ -79,32 +79,34 @@ def fetch_pending_records(state: NormalizationState) -> NormalizationState:
             # Store row data as serializable dicts keyed by DB id
             records_data = []
             for r in raw_rows:
-                records_data.append({
-                    "db_id": r.id,
-                    "ingestion_run_id": r.ingestion_run_id,
-                    "region_id": r.region_id or "",
-                    "source": r.source,
-                    "external_id": r.external_id,
-                    "raw_payload_hash": r.raw_payload_hash,
-                    "title": r.title,
-                    "company": r.company,
-                    "description": r.description,
-                    "city": r.city,
-                    "state": r.state,
-                    "country": r.country,
-                    "is_remote": r.is_remote,
-                    "job_url": r.job_url,
-                    "source_url": r.source_url,
-                    "date_posted": str(r.date_posted) if r.date_posted else None,
-                    "employment_type": r.employment_type,
-                    "experience_level": r.experience_level,
-                    "salary_raw": r.salary_raw,
-                    "salary_min": r.salary_min,
-                    "salary_max": r.salary_max,
-                    "salary_currency": r.salary_currency,
-                    "salary_period": r.salary_period,
-                    "raw_payload": r.raw_payload or {},
-                })
+                records_data.append(
+                    {
+                        "db_id": r.id,
+                        "ingestion_run_id": r.ingestion_run_id,
+                        "region_id": r.region_id or "",
+                        "source": r.source,
+                        "external_id": r.external_id,
+                        "raw_payload_hash": r.raw_payload_hash,
+                        "title": r.title,
+                        "company": r.company,
+                        "description": r.description,
+                        "city": r.city,
+                        "state": r.state,
+                        "country": r.country,
+                        "is_remote": r.is_remote,
+                        "job_url": r.job_url,
+                        "source_url": r.source_url,
+                        "date_posted": str(r.date_posted) if r.date_posted else None,
+                        "employment_type": r.employment_type,
+                        "experience_level": r.experience_level,
+                        "salary_raw": r.salary_raw,
+                        "salary_min": r.salary_min,
+                        "salary_max": r.salary_max,
+                        "salary_currency": r.salary_currency,
+                        "salary_period": r.salary_period,
+                        "raw_payload": r.raw_payload or {},
+                    }
+                )
 
         log.info("normalization_fetched_pending", count=len(records_data), batch_id=batch_id)
         # Stash in state as a generic dict list (TypedDict doesn't restrict extra keys)
@@ -395,13 +397,16 @@ class NormalizationAgent(AgentBase):
 
         result = _COMPILED_GRAPH.invoke(initial_state)
 
-        result_payload = result.get("normalization_complete_event", {
-            "event_type": "NormalizationComplete",
-            "batch_id": batch_id,
-            "normalized_count": 0,
-            "quarantined_count": 0,
-            "normalization_status": "success",
-        })
+        result_payload = result.get(
+            "normalization_complete_event",
+            {
+                "event_type": "NormalizationComplete",
+                "batch_id": batch_id,
+                "normalized_count": 0,
+                "quarantined_count": 0,
+                "normalization_status": "success",
+            },
+        )
 
         # Update instance-level last_run tracking
         self._last_run_at = datetime.now(UTC)

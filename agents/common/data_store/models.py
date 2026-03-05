@@ -24,6 +24,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 class Base(DeclarativeBase):
     """Shared declarative base for all agent models."""
+
     pass
 
 
@@ -84,12 +85,8 @@ class RawIngestedJob(Base):
     # Processing state
     processing_status: Mapped[str] = mapped_column(String(50), default="pending")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    ingestion_timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    ingestion_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class JobIngestionRun(Base):
@@ -105,12 +102,8 @@ class JobIngestionRun(Base):
     run_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     region_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     source: Mapped[str] = mapped_column(String(50), nullable=False)
-    started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="running")
     total_fetched: Mapped[int] = mapped_column(Integer, default=0)
     staged_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -163,9 +156,7 @@ class NormalizedJob(Base):
     mapper_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Date
-    date_posted: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    date_posted: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Salary
     salary_raw: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -177,9 +168,7 @@ class NormalizedJob(Base):
     # Quality
     normalization_status: Mapped[str] = mapped_column(String(50), default="success")
     normalization_errors: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class NormalizationQuarantine(Base):
@@ -198,6 +187,4 @@ class NormalizationQuarantine(Base):
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     error_type: Mapped[str] = mapped_column(String(100), nullable=False)
     error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
-    quarantined_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    quarantined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

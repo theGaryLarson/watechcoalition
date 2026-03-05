@@ -25,10 +25,7 @@ def _build_usajobs_url(region: RegionConfig) -> str:
     """Build a USAJobs search URL from region config."""
     keywords = " ".join(region.keywords) if region.keywords else "software engineer"
     location = region.query_location or "Washington"
-    return (
-        f"https://www.usajobs.gov/Search/Results"
-        f"?k={quote_plus(keywords)}&l={quote_plus(location)}"
-    )
+    return f"https://www.usajobs.gov/Search/Results?k={quote_plus(keywords)}&l={quote_plus(location)}"
 
 
 def _extract_jobs_from_html(html: str, region_id: str) -> list[RawJobRecord]:
@@ -47,22 +44,22 @@ def _extract_jobs_from_html(html: str, region_id: str) -> list[RawJobRecord]:
     )
     title_pattern = re.compile(
         r'class="[^"]*usajobs-search-result--item__title[^"]*"[^>]*>'
-        r'\s*<a[^>]*>([^<]+)',
+        r"\s*<a[^>]*>([^<]+)",
         re.DOTALL,
     )
     department_pattern = re.compile(
         r'class="[^"]*usajobs-search-result--item__department[^"]*"[^>]*>'
-        r'\s*([^<]+)',
+        r"\s*([^<]+)",
         re.DOTALL,
     )
     location_pattern = re.compile(
         r'class="[^"]*usajobs-search-result--item__location[^"]*"[^>]*>'
-        r'\s*([^<]+)',
+        r"\s*([^<]+)",
         re.DOTALL,
     )
     salary_pattern = re.compile(
         r'class="[^"]*usajobs-search-result--item__salary[^"]*"[^>]*>'
-        r'\s*([^<]+)',
+        r"\s*([^<]+)",
         re.DOTALL,
     )
     date_pattern = re.compile(
@@ -76,7 +73,7 @@ def _extract_jobs_from_html(html: str, region_id: str) -> list[RawJobRecord]:
     departments = department_pattern.findall(html)
     locations = location_pattern.findall(html)
     salaries = salary_pattern.findall(html)
-    dates = date_pattern.findall(html)
+    _dates = date_pattern.findall(html)  # reserved for future use
 
     for i, control_num in enumerate(control_numbers):
         if not control_num:
@@ -99,10 +96,7 @@ def _extract_jobs_from_html(html: str, region_id: str) -> list[RawJobRecord]:
 
         # Check for remote/telework indicators
         is_remote = None
-        if location_text and any(
-            kw in location_text.lower()
-            for kw in ("remote", "telework", "anywhere")
-        ):
+        if location_text and any(kw in location_text.lower() for kw in ("remote", "telework", "anywhere")):
             is_remote = True
 
         job_url = f"https://www.usajobs.gov/job/{control_num}"
@@ -182,6 +176,7 @@ class Crawl4AIUSAJobsAdapter(SourceAdapter):
         """Return adapter readiness status."""
         try:
             import crawl4ai  # noqa: F401
+
             reachable = True
         except ImportError:
             reachable = False

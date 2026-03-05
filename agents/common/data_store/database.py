@@ -28,8 +28,7 @@ def get_engine() -> Engine:
         url = os.getenv("PYTHON_DATABASE_URL")
         if not url:
             raise RuntimeError(
-                "PYTHON_DATABASE_URL is not set. "
-                "Expected format: postgresql+psycopg2://user:pass@host:port/db"
+                "PYTHON_DATABASE_URL is not set. Expected format: postgresql+psycopg2://user:pass@host:port/db"
             )
         _engine = create_engine(url, pool_pre_ping=True, pool_size=5)
         log.info("db_engine_created", url=url.split("@")[-1])  # log host only, no creds

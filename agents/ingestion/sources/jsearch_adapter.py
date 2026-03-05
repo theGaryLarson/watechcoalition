@@ -116,9 +116,7 @@ class JSearchAdapter(SourceAdapter):
         )
         return all_records
 
-    async def _request_with_retry(
-        self, client: httpx.AsyncClient, headers: dict, params: dict
-    ) -> dict | None:
+    async def _request_with_retry(self, client: httpx.AsyncClient, headers: dict, params: dict) -> dict | None:
         """Make a single API request with exponential backoff + jitter."""
         for attempt in range(1, _MAX_RETRIES + 1):
             try:

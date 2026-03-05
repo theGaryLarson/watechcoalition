@@ -47,9 +47,7 @@ class TestAgentBase:
     def test_process_callable(self) -> None:
         """A concrete subclass can call process()."""
         agent = _ConcreteAgent()
-        event = EventEnvelope(
-            correlation_id="c-1", agent_id="test", payload={}
-        )
+        event = EventEnvelope(correlation_id="c-1", agent_id="test", payload={})
         out = agent.process(event)
         assert out is not None
         assert out.correlation_id == "c-1"
